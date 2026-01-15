@@ -6,6 +6,8 @@ import jsPDF from 'jspdf';
 
 type DetailKey = 'controlSystem' | 'tractionSystem' | 'doorOperator';
 
+const BASE = import.meta.env.BASE_URL || '/';
+
 const DETAIL_CONFIG: Record<DetailKey, {
   title: string;
   mainImage: string;
@@ -14,20 +16,20 @@ const DETAIL_CONFIG: Record<DetailKey, {
 }> = {
   controlSystem: {
     title: '控制系统全套明细',
-    mainImage: '/Control System.jpg',
-    listImage: '/Control System List.jpg',
+    mainImage: `${BASE}Control System.jpg`,
+    listImage: `${BASE}Control System List.jpg`,
     names: ['控制系统全套']
   },
   tractionSystem: {
     title: '曳引系统明细',
-    mainImage: '/Traction System.jpg',
-    listImage: '/Traction System List.jpg',
+    mainImage: `${BASE}Traction System.jpg`,
+    listImage: `${BASE}Traction System List.jpg`,
     names: ['曳引机', '机架（含导向轮）']
   },
   doorOperator: {
     title: '门机马达及控制器明细',
-    mainImage: '/DoorOperatorMotor.jpeg',
-    listImage: '/DoorOperatorMotor List.jpg',
+    mainImage: `${BASE}DoorOperatorMotor.jpeg`,
+    listImage: `${BASE}DoorOperatorMotor List.jpg`,
     names: ['门机马达及控制器']
   }
 };
@@ -417,7 +419,7 @@ export const QuotationPreview: React.FC<Props> = ({ data, input, onInputChange }
           <div className="relative border-b-2 border-black pb-4 mb-6 flex items-center justify-center min-h-[4rem]">
             {/* Logo */}
             <div className="absolute left-0 h-full flex items-center">
-              <img src="/NidecElevator-logo.png" alt="Nidec Elevator" className="h-12 w-auto object-contain" />
+              <img src={`${BASE}NidecElevator-logo.png`} alt="Nidec Elevator" className="h-12 w-auto object-contain" />
             </div>
             
             <h1 className="text-3xl font-bold tracking-widest uppercase">电梯改造报价单</h1>
