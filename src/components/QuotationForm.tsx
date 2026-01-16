@@ -69,12 +69,23 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
         updates.doorType = '中分两扇';
       }
       
+      // Force Organic Room for Scheme 4 & 5
+      if (['方案4', '方案5'].includes(newScheme)) {
+        updates.hasMachineRoom = true;
+      }
+
       onChange({ ...value, ...updates });
+    } else {
+      // Ensure Organic Room is enforced even if scheme doesn't change (e.g. on load or edge cases)
+      if (['方案4', '方案5'].includes(newScheme) && !value.hasMachineRoom) {
+        onChange({ ...value, hasMachineRoom: true });
+      }
     }
   }, [choices]);
 
   const isOldMachineScheme = ['方案1', '方案2-1', '方案2-2', '方案2-3', '方案3'].includes(value.scheme);
   const isNewMachineScheme = ['方案4', '方案5'].includes(value.scheme);
+  const isMachineRoomLocked = isNewMachineScheme;
 
   return (
     <div className="bg-industrial-card border border-industrial-border p-6 rounded-sm shadow-lg text-industrial-text">
@@ -303,7 +314,10 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
         {/* Toggles */}
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 border-t border-industrial-border pt-4 items-center">
           <div className="flex items-center pb-2">
-            <div className="flex items-center justify-between w-full cursor-pointer whitespace-nowrap px-3" onClick={() => handleChange('hasMachineRoom', !value.hasMachineRoom)}>
+            <div 
+              className={`flex items-center justify-between w-full whitespace-nowrap px-3 ${isMachineRoomLocked ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`} 
+              onClick={() => !isMachineRoomLocked && handleChange('hasMachineRoom', !value.hasMachineRoom)}
+            >
               <span className={`text-sm transition-colors ${value.hasMachineRoom ? 'text-industrial-accent font-bold' : 'text-industrial-muted'}`}>有机房</span>
               <div className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${!value.hasMachineRoom ? 'bg-industrial-accent' : 'bg-industrial-border'}`}>
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${!value.hasMachineRoom ? 'translate-x-6' : 'translate-x-1'}`} />

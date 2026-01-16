@@ -590,7 +590,7 @@ export const QuotationPreview: React.FC<Props> = ({ data, input, onInputChange }
 
           {/* Footer */}
           <div className="mt-12 text-xs text-gray-400 text-center border-t border-gray-200 pt-4">
-            <p>报价有效期：15天 | 最终解释权归尼得科电梯(青岛)有限公司所有</p>
+            <p>报价有效期：15天 | 最终解释权归尼得科康迪克电梯技术(有限公司)所有</p>
           </div>
           {detailView && (
             <div
