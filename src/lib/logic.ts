@@ -1,24 +1,42 @@
 import controlDataRaw from '../data/control.json';
 import tractionDataRaw from '../data/traction.json';
-import traction21DataRaw from '../data/traction_2_1.json';
 import miscDataRaw from '../data/misc.json';
 import { ControlItem, MiscItem, QuotationInput, QuotationItem, QuotationResult, TractionItem } from '../types';
 
 const controlData = controlDataRaw as ControlItem[];
 const tractionData = tractionDataRaw as TractionItem[];
-const traction21Data = traction21DataRaw as unknown as TractionItem[]; // Structure might differ slightly, but key fields match
+const tractionAll: TractionItem[] = tractionData;
 const miscData = miscDataRaw as MiscItem[];
 
-// Helper to round prices to nearest integer
 const round = (num: number) => Math.round(num);
 
-// Helper to find Misc item price
 function getMiscPrice(name: string, spec?: string): number {
   const item = miscData.find(i => i.名称 === name && (!spec || i.规格 === spec));
   return item ? item.含税价格 : 0;
 }
 
-// Helper to calculate Control System Price
+function getControlPowerFromTraction(oldMachinePower: number): number | null {
+  if (!oldMachinePower || oldMachinePower <= 0) return null;
+
+  let best: TractionItem | undefined;
+  let bestDiff = Number.POSITIVE_INFINITY;
+
+  tractionAll.forEach(t => {
+    const ratedPower = (t as any)["额定功率 (kw)"];
+    if (typeof ratedPower !== 'number') return;
+    if (ratedPower < oldMachinePower) return;
+    const diff = ratedPower - oldMachinePower;
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = t;
+    }
+  });
+
+  if (!best) return null;
+  const controlPower = (best as any)["适配控制系统功率 (kw)"];
+  return typeof controlPower === 'number' ? controlPower : null;
+}
+
 function calculateControlPrice(
   model: 'K-MC1000' | 'K-MC5000',
   power: number,
@@ -67,24 +85,24 @@ export function calculateQuotation(input: QuotationInput): QuotationResult {
   const warnings: string[] = [];
   let totalPrice = 0;
 
-  // 1. Determine Control System Model & Power
   let controlModel: 'K-MC1000' | 'K-MC5000' = 'K-MC1000';
   let requiredPower = 0;
   let tractionMachine: TractionItem | undefined;
   let machineFramePrice = 0;
 
-  // Logic based on Scheme
   if (['方案1', '方案2-1', '方案2-3', '方案3'].includes(input.scheme)) {
     controlModel = 'K-MC1000';
-    // Power ≈ Old Power * 2
-    requiredPower = (input.oldMachinePower || 0) * 2;
+    const basePower = input.oldMachinePower || 0;
+    const matchedPower = getControlPowerFromTraction(basePower);
+    requiredPower = matchedPower !== null ? matchedPower : basePower * 2;
   } else if (input.scheme === '方案2-2') {
     controlModel = 'K-MC5000';
-    requiredPower = (input.oldMachinePower || 0) * 2;
+    const basePower = input.oldMachinePower || 0;
+    const matchedPower = getControlPowerFromTraction(basePower);
+    requiredPower = matchedPower !== null ? matchedPower : basePower * 2;
   } else if (['方案4', '方案5'].includes(input.scheme)) {
-    // New Machine - Find Machine first
     const ratio = input.tractionRatio || '1:1';
-    const sourceData = ratio === '1:1' ? tractionData : traction21Data;
+    const sourceData = tractionData;
     const requiredLoad = input.load || 0;
     const requiredSpeed = input.speed || 0;
 

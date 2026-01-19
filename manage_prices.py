@@ -10,8 +10,7 @@ EXCEL_PATH = os.path.join(BASE_DIR, 'prices.xlsx')
 
 FILES_MAP = {
     'Control': 'control.json',
-    'Traction_1_1': 'traction.json',
-    'Traction_2_1': 'traction_2_1.json',
+    'Traction': 'traction.json',
     'Misc': 'misc.json'
 }
 
@@ -45,31 +44,28 @@ def excel_to_json():
         xls = pd.ExcelFile(EXCEL_PATH)
         
         for sheet_name, json_file in FILES_MAP.items():
-            if sheet_name in xls.sheet_names:
-                print(f"  Reading Sheet '{sheet_name}' -> {json_file}")
-                df = pd.read_excel(xls, sheet_name=sheet_name)
-                
-                # Convert back to list of dicts
-                # Handle NaN as null for JSON
-                data = df.to_dict(orient='records')
-                
-                # Clean up data types (Pandas may introduce int64, float64 which aren't JSON serializable directly in some versions, but standard json dump usually handles int/float)
-                # Also convert NaN to None
-                cleaned_data = []
-                for row in data:
-                    new_row = {}
-                    for k, v in row.items():
-                        if pd.isna(v):
-                            new_row[k] = None
-                        else:
-                            new_row[k] = v
-                    cleaned_data.append(new_row)
-
-                json_path = os.path.join(DATA_DIR, json_file)
-                with open(json_path, 'w', encoding='utf-8') as f:
-                    json.dump(cleaned_data, f, indent=2, ensure_ascii=False)
-            else:
+            if sheet_name not in xls.sheet_names:
                 print(f"  Warning: Sheet '{sheet_name}' not found in Excel.")
+                continue
+
+            print(f"  Reading Sheet '{sheet_name}'")
+            df = pd.read_excel(xls, sheet_name=sheet_name)
+
+            data = df.to_dict(orient='records')
+
+            cleaned_data = []
+            for row in data:
+                new_row = {}
+                for k, v in row.items():
+                    if pd.isna(v):
+                        new_row[k] = None
+                    else:
+                        new_row[k] = v
+                cleaned_data.append(new_row)
+
+            json_path = os.path.join(DATA_DIR, json_file)
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(cleaned_data, f, indent=2, ensure_ascii=False)
         
         print(f"\nSuccess! JSON files updated in {DATA_DIR}")
     except Exception as e:

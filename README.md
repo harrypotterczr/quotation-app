@@ -151,7 +151,7 @@ npm run build
 
 1. 编辑根目录的 `prices.xlsx`：
    - `Control` 工作表：控制系统功率与价格
-   - `Traction_1_1` / `Traction_2_1` 等工作表：曳引机数据
+   - `Traction` 等工作表：曳引机数据
    - `Misc` 工作表：门机、编码器、现场测量、包装、运费等杂项
 2. 保存后执行：
 
