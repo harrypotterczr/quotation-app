@@ -296,12 +296,101 @@ export const QuotationPreview: React.FC<Props> = ({ data, input, onInputChange }
         }
       });
       
-      const imgData = canvas.toDataURL('image/png');
+      // const imgData = canvas.toDataURL('image/png'); // Unused in new logic
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      
+      // Calculate scaled height in PDF millimeters
+      const ratio = imgWidth / pdfWidth;
+      
+      const pageHeight = pdfHeight;
+      const headerHeight = 10; // Reserve 10mm for header
+      const footerHeight = 20; // Reserve 20mm for footer
+
+      let currentY = 0; // Current Y position in the original image (pixels)
+      let pageNumber = 1;
+
+      // Get all table rows to calculate split points
+      const rows = printRef.current.querySelectorAll('tr');
+      const rowBottoms: number[] = [];
+      
+      // Calculate top offset relative to the print container
+      const containerRect = printRef.current.getBoundingClientRect();
+      const scaleFactor = imgHeight / containerRect.height; // DOM to Canvas scale factor
+
+      rows.forEach(row => {
+        const rect = row.getBoundingClientRect();
+        // Calculate bottom position relative to container, then scale to canvas pixels
+        const bottomPx = (rect.bottom - containerRect.top) * scaleFactor;
+        rowBottoms.push(bottomPx);
+      });
+      // Also consider the footer of the document (if any content after table)
+      rowBottoms.push(imgHeight);
+      rowBottoms.sort((a, b) => a - b);
+
+      while (currentY < imgHeight) {
+        if (pageNumber > 1) pdf.addPage();
+
+        // Determine slice height for this page
+        // If first page, we don't need header margin. Subsequent pages do.
+        const currentHeaderHeight = pageNumber === 1 ? 0 : headerHeight;
+        const currentMaxHeightPx = (pageHeight - footerHeight - currentHeaderHeight) * ratio;
+
+        // Default: take remaining height or max page height
+        let sliceHeight = Math.min(currentMaxHeightPx, imgHeight - currentY);
+        
+        // If we are not at the end, we need to find a safe cut point
+        if (currentY + sliceHeight < imgHeight) {
+             const idealCutY = currentY + sliceHeight;
+             // Find the largest row bottom that is less than or equal to idealCutY
+             let bestCutY = currentY;
+             for (const bottom of rowBottoms) {
+                 if (bottom > currentY && bottom <= idealCutY) {
+                     bestCutY = bottom;
+                 } else if (bottom > idealCutY) {
+                     break; // Optimization: sorted array
+                 }
+             }
+             
+             // If we found a valid row break, use it. 
+             // Fallback: if no row ends in this range (e.g. one huge row?), force cut at max height (should be rare)
+             if (bestCutY > currentY) {
+                 sliceHeight = bestCutY - currentY;
+             }
+        }
+
+        // Create a temporary canvas to hold the slice
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = imgWidth;
+        sliceCanvas.height = sliceHeight;
+        const ctx = sliceCanvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(canvas, 0, currentY, imgWidth, sliceHeight, 0, 0, imgWidth, sliceHeight);
+            const sliceData = sliceCanvas.toDataURL('image/png');
+            
+            // Add slice to PDF
+            // Calculate height in PDF units
+            const pdfSliceHeight = sliceHeight / ratio;
+            
+            // For pages > 1, offset by header height
+            const yPos = pageNumber === 1 ? 0 : currentHeaderHeight;
+            
+            pdf.addImage(sliceData, 'PNG', 0, yPos, pdfWidth, pdfSliceHeight);
+            
+            // Add Footer Page Number
+            pdf.setFontSize(10);
+            pdf.text(`Page ${pageNumber}`, pdfWidth / 2, pageHeight - 10, { align: 'center' });
+        }
+
+        currentY += sliceHeight;
+        pageNumber++;
+      }
+      
       pdf.save(`${input.projectName}_报价单.pdf`);
     } catch (err) {
       console.error('PDF Export failed', err);

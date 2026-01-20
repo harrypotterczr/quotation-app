@@ -190,6 +190,9 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
   const isOption2 = value.scheme === '方案4';
   const isOption3 = value.scheme === '方案5';
 
+  // Determine if any option is selected to show/hide "Other Parameters"
+  const isAnyOptionSelected = choices.selectedOption !== undefined;
+
   return (
     <div className="bg-industrial-card border border-industrial-border p-6 rounded-sm shadow-lg text-industrial-text">
       <h2 className="text-xl font-bold mb-6 flex items-center text-industrial-accent border-b border-industrial-border pb-2">
@@ -459,7 +462,8 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
         </div>
 
         {/* Other Parameters (Renamed from Old Machine Info / Renovation Config) */}
-        <div className="border-t border-industrial-border pt-4">
+        {isAnyOptionSelected && (
+        <div className="border-t border-industrial-border pt-4 animate-in fade-in slide-in-from-top-4">
           <h3 className="text-sm font-bold text-industrial-accent mb-3 flex items-center">
             <Box className="mr-2 h-4 w-4" /> 其它参数
           </h3>
@@ -532,7 +536,8 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
             </div>
           )}
 
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
