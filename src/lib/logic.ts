@@ -37,6 +37,57 @@ function getControlPowerFromTraction(oldMachinePower: number): number | null {
   return typeof controlPower === 'number' ? controlPower : null;
 }
 
+function getControlPowerFromCurrent(oldMachineCurrent: number): { power: number; model: string } | null {
+  if (!oldMachineCurrent || oldMachineCurrent <= 0) return null;
+
+  // Find suitable control item based on current
+  // Filter for K-MC1000 or K-MC5000 is needed?
+  // The requirement says "match control system 'Adapted Traction Current' >= oldMachineCurrent and closest"
+  // It implies we should look at control.json data.
+  
+  // Let's look across all control data (both 1000 and 5000 models?)
+  // Usually Scheme 1 prefers K-MC1000 unless specified otherwise by logic, 
+  // but if we just match by current, we should pick the best fit.
+  // However, existing logic forces model based on sub-scheme (e.g. 2-2 uses 5000).
+  // Let's assume we search within the assigned model later, or search globally and return the model too?
+  // Requirement 5 says: "Option 1 control system match logic change: based on old rated current..."
+  // Option 1 includes Scheme 1, 2-1, 2-3, 3. (Scheme 2-2 is Option 1 but specific model).
+  // Let's genericize: find best fit in controlData.
+  
+  let best: ControlItem | undefined;
+  let bestDiff = Number.POSITIVE_INFINITY;
+
+  controlData.forEach(c => {
+    // Only consider K-MC1000 for standard Option 1 cases unless 2-2 overrides later?
+    // Actually, K-MC1000 and 5000 have similar current specs usually?
+    // Let's prioritize K-MC1000 if both fit, or just find best fit regardless of model first?
+    // To be safe and follow "Option 1" context (which defaults to K-MC1000 in code), let's prefer K-MC1000.
+    
+    // But wait, Scheme 2-2 explicitly needs K-MC5000.
+    // Let's make this function take a preferred model or filter? 
+    // Or just return the specs.
+    
+    const adaptedCurrent = (c as any)["适配曳引机电流"]; // Need to ensure this field exists in types
+    if (typeof adaptedCurrent !== 'number') return;
+    
+    if (adaptedCurrent < oldMachineCurrent) return;
+    
+    const diff = adaptedCurrent - oldMachineCurrent;
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = c;
+    } else if (diff === bestDiff) {
+      // Tie-breaker: prefer K-MC1000 over 5000 if diff is same, or lower price?
+      if (best?.控制柜型号 !== 'K-MC1000' && c.控制柜型号 === 'K-MC1000') {
+        best = c;
+      }
+    }
+  });
+
+  if (!best) return null;
+  return { power: best.功率, model: best.控制柜型号 };
+}
+
 function calculateControlPrice(
   model: 'K-MC1000' | 'K-MC5000',
   power: number,
@@ -91,15 +142,66 @@ export function calculateQuotation(input: QuotationInput): QuotationResult {
   let machineFramePrice = 0;
 
   if (['方案1', '方案2-1', '方案2-3', '方案3'].includes(input.scheme)) {
+    // Option 1 logic (mostly)
     controlModel = 'K-MC1000';
-    const basePower = input.oldMachinePower || 0;
-    const matchedPower = getControlPowerFromTraction(basePower);
-    requiredPower = matchedPower !== null ? matchedPower : basePower * 2;
+    
+    // New Logic: Match based on Old Current
+    const oldCurrent = input.oldMachineCurrent || 0;
+    const match = getControlPowerFromCurrent(oldCurrent);
+    
+    if (match) {
+      requiredPower = match.power;
+      // Note: We might want to force the model found by match if strictly following "match spec",
+      // but scheme definition often dictates model (e.g. 2-2).
+      // For Scheme 1, 2-1, 2-3, 3 -> K-MC1000 is standard.
+      // Check if match.model is different? 
+      // K-MC5000 is usually expensive, so if K-MC1000 fits, use it.
+    } else {
+      // Fallback if no current provided or no match: Use Old Power * 2 logic?
+      // Or just default to min power?
+      // Let's keep old power logic as backup if current is missing?
+      // The prompt specifically said "Option 1... based on old rated current".
+      // If current is 0/missing, maybe fallback to old power logic for safety?
+      const basePower = input.oldMachinePower || 0;
+      if (basePower > 0) {
+         const matchedPower = getControlPowerFromTraction(basePower);
+         requiredPower = matchedPower !== null ? matchedPower : basePower * 2;
+      }
+    }
+
   } else if (input.scheme === '方案2-2') {
     controlModel = 'K-MC5000';
-    const basePower = input.oldMachinePower || 0;
-    const matchedPower = getControlPowerFromTraction(basePower);
-    requiredPower = matchedPower !== null ? matchedPower : basePower * 2;
+    // Scheme 2-2 is also "Option 1" in UI but with specific choice.
+    // Should it also use Current matching? Yes, likely.
+    
+    const oldCurrent = input.oldMachineCurrent || 0;
+    // We need to find match within K-MC5000 specifically?
+    // getControlPowerFromCurrent searches all.
+    // Let's refine getControlPowerFromCurrent to accept model filter or handle it here.
+    
+    // Let's do specific lookup for K-MC5000 based on current
+    let best5000: ControlItem | undefined;
+    let bestDiff = Number.POSITIVE_INFINITY;
+    
+    controlData.filter(c => c.控制柜型号 === 'K-MC5000').forEach(c => {
+       const adapted = (c as any)["适配曳引机电流"];
+       if (typeof adapted !== 'number' || adapted < oldCurrent) return;
+       const diff = adapted - oldCurrent;
+       if (diff < bestDiff) {
+         bestDiff = diff;
+         best5000 = c;
+       }
+    });
+    
+    if (best5000) {
+      requiredPower = best5000.功率;
+    } else {
+       // Fallback
+       const basePower = input.oldMachinePower || 0;
+       const matchedPower = getControlPowerFromTraction(basePower);
+       requiredPower = matchedPower !== null ? matchedPower : basePower * 2;
+    }
+
   } else if (['方案4', '方案5'].includes(input.scheme)) {
     const ratio = input.tractionRatio || '1:1';
     const sourceData = tractionData;
@@ -264,17 +366,59 @@ export function calculateQuotation(input: QuotationInput): QuotationResult {
     });
   }
 
-  // Packaging & Freight (Manual Input)
-  const pkgPrice = input.packagingPrice || 0;
-  items.push({
-    name: '包装',
-    spec: '木箱',
-    quantity: 1,
-    unitPrice: round(pkgPrice),
-    totalPrice: round(pkgPrice),
-    remark: ''
-  });
+  // Packaging Logic based on misc.json
+  // Rules:
+  // Control Cabinet box (always): "包装(木箱)" spec "控制柜"
+  // Frame box (if replace traction): "包装(木箱)" spec "机架"
+  // Door machine box? Not specified in json, maybe included or separate?
+  // Current misc.json has: 
+  // "包装(木箱)" spec "机架" = 500
+  // "包装(木箱)" spec "控制柜" = 500
   
+  // Logic: 
+  // Always have 1 control cabinet box.
+  // If replacing traction (Option 2 or 3 / Scheme 4 or 5), add 1 frame box.
+  // Note: input.packagingPrice is MANUAL override. We should calculate default if not overridden?
+  // Or just display calculated item.
+  // The current code uses `input.packagingPrice` as a single manual item.
+  // We should split it into calculated items OR use manual.
+  // Let's implement auto-calculation.
+  
+  let autoPkgPrice = 0;
+  const pkgItems: {name: string, spec: string, price: number}[] = [];
+  
+  // 1. Control Cabinet Box
+  const controlBoxPrice = getMiscPrice('包装(木箱)', '控制柜') || 500;
+  pkgItems.push({ name: '包装', spec: '控制柜木箱', price: controlBoxPrice });
+  autoPkgPrice += controlBoxPrice;
+  
+  // 2. Machine/Frame Box (only for Scheme 4 & 5)
+  if (['方案4', '方案5'].includes(input.scheme)) {
+     const frameBoxPrice = getMiscPrice('包装(木箱)', '机架') || 500;
+     pkgItems.push({ name: '包装', spec: '主机/机架木箱', price: frameBoxPrice });
+     autoPkgPrice += frameBoxPrice;
+  }
+  
+  // If user provided manual packaging price (override), use it as a single lump sum?
+  // Or just ignore manual input field for now and use auto?
+  // The UI has "Packaging Price" input. If we want auto, we should probably remove that input or use it as "Additional Packaging".
+  // Let's assume the requirement "增加包装费判定" means auto-calculate.
+  // We will Replace the old manual logic with this auto logic.
+  // If we still want to support manual override, we can check if input.packagingPrice is set (non-zero?)
+  // But usually "judgment logic" implies system calculation.
+  
+  // Let's add the items.
+  pkgItems.forEach(p => {
+    items.push({
+      name: p.name,
+      spec: p.spec,
+      quantity: 1,
+      unitPrice: round(p.price),
+      totalPrice: round(p.price)
+    });
+  });
+
+  // Freight (Manual Input)
   const transPrice = input.transportPrice || 0;
   items.push({
     name: '运费',

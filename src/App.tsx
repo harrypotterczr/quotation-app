@@ -18,7 +18,7 @@ const DEFAULT_INPUT: QuotationInput = {
   
   // Defaults for conditionals
   oldMachinePower: 5.5,
-  tractionRatio: '1:1'
+  tractionRatio: '2:1'
 };
 
 function App() {
