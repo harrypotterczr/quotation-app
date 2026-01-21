@@ -77,7 +77,7 @@ function App() {
             
             {/* Quick Stats or Helper Text could go here */}
             <div className="bg-industrial-card border border-industrial-border p-4 rounded-sm text-sm text-industrial-muted">
-              <p>请根据实际勘测数据填写参数。部分方案需要特定的原机信息才能准确报价。</p>
+              <p>请根据实际勘测数据填写参数。部分方案需要现场数据才能准确报价。</p>
             </div>
           </div>
 
