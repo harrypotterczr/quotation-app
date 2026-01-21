@@ -5,7 +5,7 @@ import { ControlItem, MiscItem, QuotationInput, QuotationItem, QuotationResult, 
 
 const controlData = controlDataRaw as ControlItem[];
 const tractionData = tractionDataRaw as TractionItem[];
-const tractionAll: TractionItem[] = tractionData;
+// const tractionAll: TractionItem[] = tractionData; // Unused
 const miscData = miscDataRaw as MiscItem[];
 
 const round = (num: number) => Math.round(num);
@@ -15,6 +15,11 @@ function getMiscPrice(name: string, spec?: string): number {
   return item ? item.含税价格 : 0;
 }
 
+// Helper: Calculate power from traction match (used in fallback if we ever need it, but currently logic relies on current or manual)
+// Keeping it for future reference or if logic changes back.
+// function getControlPowerFromTraction(oldMachinePower: number): number | null { ... } 
+// Commenting out to fix unused error since we removed the only usage.
+/*
 function getControlPowerFromTraction(oldMachinePower: number): number | null {
   if (!oldMachinePower || oldMachinePower <= 0) return null;
 
@@ -36,6 +41,7 @@ function getControlPowerFromTraction(oldMachinePower: number): number | null {
   const controlPower = (best as any)["适配控制系统功率 (kw)"];
   return typeof controlPower === 'number' ? controlPower : null;
 }
+*/
 
 function getControlPowerFromCurrent(oldMachineCurrent: number): { power: number; model: string } | null {
   if (!oldMachineCurrent || oldMachineCurrent <= 0) return null;
@@ -146,60 +152,45 @@ export function calculateQuotation(input: QuotationInput): QuotationResult {
     controlModel = 'K-MC1000';
     
     // New Logic: Match based on Old Current
-    const oldCurrent = input.oldMachineCurrent || 0;
-    const match = getControlPowerFromCurrent(oldCurrent);
+    const oldCurrent = input.oldMachineCurrent; // Allow undefined/0 to be handled
     
-    if (match) {
-      requiredPower = match.power;
-      // Note: We might want to force the model found by match if strictly following "match spec",
-      // but scheme definition often dictates model (e.g. 2-2).
-      // For Scheme 1, 2-1, 2-3, 3 -> K-MC1000 is standard.
-      // Check if match.model is different? 
-      // K-MC5000 is usually expensive, so if K-MC1000 fits, use it.
-    } else {
-      // Fallback if no current provided or no match: Use Old Power * 2 logic?
-      // Or just default to min power?
-      // Let's keep old power logic as backup if current is missing?
-      // The prompt specifically said "Option 1... based on old rated current".
-      // If current is 0/missing, maybe fallback to old power logic for safety?
-      const basePower = input.oldMachinePower || 0;
-      if (basePower > 0) {
-         const matchedPower = getControlPowerFromTraction(basePower);
-         requiredPower = matchedPower !== null ? matchedPower : basePower * 2;
+    if (oldCurrent && oldCurrent > 0) {
+      const match = getControlPowerFromCurrent(oldCurrent);
+      if (match) {
+        requiredPower = match.power;
       }
+      // If oldCurrent is provided but no match found (e.g. too high), requiredPower stays 0 -> will trigger warning later
+    } else {
+      // If oldCurrent is empty/0, we do NOT fallback to oldPower.
+      // Requirement: "If oldMachineCurrent is empty, show model only, no power, price 0"
+      // So requiredPower remains 0.
+      requiredPower = 0;
     }
 
   } else if (input.scheme === '方案2-2') {
     controlModel = 'K-MC5000';
-    // Scheme 2-2 is also "Option 1" in UI but with specific choice.
-    // Should it also use Current matching? Yes, likely.
-    
-    const oldCurrent = input.oldMachineCurrent || 0;
-    // We need to find match within K-MC5000 specifically?
-    // getControlPowerFromCurrent searches all.
-    // Let's refine getControlPowerFromCurrent to accept model filter or handle it here.
-    
-    // Let's do specific lookup for K-MC5000 based on current
-    let best5000: ControlItem | undefined;
-    let bestDiff = Number.POSITIVE_INFINITY;
-    
-    controlData.filter(c => c.控制柜型号 === 'K-MC5000').forEach(c => {
-       const adapted = (c as any)["适配曳引机电流"];
-       if (typeof adapted !== 'number' || adapted < oldCurrent) return;
-       const diff = adapted - oldCurrent;
-       if (diff < bestDiff) {
-         bestDiff = diff;
-         best5000 = c;
-       }
-    });
-    
-    if (best5000) {
-      requiredPower = best5000.功率;
+    const oldCurrent = input.oldMachineCurrent;
+
+    if (oldCurrent && oldCurrent > 0) {
+      let best5000: ControlItem | undefined;
+      let bestDiff = Number.POSITIVE_INFINITY;
+      
+      controlData.filter(c => c.控制柜型号 === 'K-MC5000').forEach(c => {
+         const adapted = (c as any)["适配曳引机电流"];
+         if (typeof adapted !== 'number' || adapted < oldCurrent) return;
+         const diff = adapted - oldCurrent;
+         if (diff < bestDiff) {
+           bestDiff = diff;
+           best5000 = c;
+         }
+      });
+      
+      if (best5000) {
+        requiredPower = best5000.功率;
+      }
     } else {
-       // Fallback
-       const basePower = input.oldMachinePower || 0;
-       const matchedPower = getControlPowerFromTraction(basePower);
-       requiredPower = matchedPower !== null ? matchedPower : basePower * 2;
+       // Same logic as above: if no current, power is 0.
+       requiredPower = 0;
     }
 
   } else if (['方案4', '方案5'].includes(input.scheme)) {
@@ -292,6 +283,17 @@ export function calculateQuotation(input: QuotationInput): QuotationResult {
       unitPrice: controlRes.price,
       totalPrice: controlRes.price
     });
+  } else if (requiredPower === 0) {
+    // Case: No power determined (e.g. empty old current)
+    // Requirement: Show model only, no power, price 0
+    items.push({
+      name: '控制系统全套',
+      spec: controlModel, // Just the model name
+      quantity: 1,
+      unitPrice: 0,
+      totalPrice: 0,
+      remark: '未提供原曳引机电流，无法计算功率及价格'
+    });
   } else {
     warnings.push(`未找到匹配的控制系统 (${controlModel}, 功率>=${requiredPower}KW)`);
   }
@@ -370,52 +372,26 @@ export function calculateQuotation(input: QuotationInput): QuotationResult {
   // Rules:
   // Control Cabinet box (always): "包装(木箱)" spec "控制柜"
   // Frame box (if replace traction): "包装(木箱)" spec "机架"
-  // Door machine box? Not specified in json, maybe included or separate?
-  // Current misc.json has: 
-  // "包装(木箱)" spec "机架" = 500
-  // "包装(木箱)" spec "控制柜" = 500
-  
-  // Logic: 
-  // Always have 1 control cabinet box.
-  // If replacing traction (Option 2 or 3 / Scheme 4 or 5), add 1 frame box.
-  // Note: input.packagingPrice is MANUAL override. We should calculate default if not overridden?
-  // Or just display calculated item.
-  // The current code uses `input.packagingPrice` as a single manual item.
-  // We should split it into calculated items OR use manual.
-  // Let's implement auto-calculation.
+  // Requirement: Merge into one line, spec always "木箱"
   
   let autoPkgPrice = 0;
-  const pkgItems: {name: string, spec: string, price: number}[] = [];
   
   // 1. Control Cabinet Box
   const controlBoxPrice = getMiscPrice('包装(木箱)', '控制柜') || 500;
-  pkgItems.push({ name: '包装', spec: '控制柜木箱', price: controlBoxPrice });
   autoPkgPrice += controlBoxPrice;
   
   // 2. Machine/Frame Box (only for Scheme 4 & 5)
   if (['方案4', '方案5'].includes(input.scheme)) {
      const frameBoxPrice = getMiscPrice('包装(木箱)', '机架') || 500;
-     pkgItems.push({ name: '包装', spec: '主机/机架木箱', price: frameBoxPrice });
      autoPkgPrice += frameBoxPrice;
   }
   
-  // If user provided manual packaging price (override), use it as a single lump sum?
-  // Or just ignore manual input field for now and use auto?
-  // The UI has "Packaging Price" input. If we want auto, we should probably remove that input or use it as "Additional Packaging".
-  // Let's assume the requirement "增加包装费判定" means auto-calculate.
-  // We will Replace the old manual logic with this auto logic.
-  // If we still want to support manual override, we can check if input.packagingPrice is set (non-zero?)
-  // But usually "judgment logic" implies system calculation.
-  
-  // Let's add the items.
-  pkgItems.forEach(p => {
-    items.push({
-      name: p.name,
-      spec: p.spec,
-      quantity: 1,
-      unitPrice: round(p.price),
-      totalPrice: round(p.price)
-    });
+  items.push({
+    name: '包装',
+    spec: '木箱',
+    quantity: 1,
+    unitPrice: round(autoPkgPrice),
+    totalPrice: round(autoPkgPrice)
   });
 
   // Freight (Manual Input)

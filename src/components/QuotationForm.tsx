@@ -6,6 +6,7 @@ import tractionData from '../data/traction.json';
 interface Props {
   value: QuotationInput;
   onChange: (value: QuotationInput) => void;
+  onSchemeSelect?: (selected: boolean) => void;
 }
 
 // Helper Component for Numeric Input to handle leading zeros and decimals correctly
@@ -62,7 +63,7 @@ interface ModificationChoices {
   otherEncoderSolution?: 'kmc1000' | 'kmc5000' | 'replace_encoder';
 }
 
-export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
+export const QuotationForm: React.FC<Props> = ({ value, onChange, onSchemeSelect }) => {
   const [choices, setChoices] = useState<ModificationChoices>({
     selectedOption: undefined, // Start with no selection
     replaceTraction: false,
@@ -108,12 +109,25 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
     const updates: Partial<QuotationInput> = {};
     let shouldUpdate = false;
     
+    // Explicitly clear oldMachinePower if it was set by default in previous versions or state
+    // We want it to be undefined initially so logic.ts handles it as "empty"
+    if (value.oldMachinePower === 5.5) { // Check against the old default
+      updates.oldMachinePower = undefined;
+      shouldUpdate = true;
+    }
+    
     if (!value.tractionRatio) {
       updates.tractionRatio = '2:1';
       shouldUpdate = true;
     }
     if (!value.doorWidth) {
       updates.doorWidth = 900;
+      shouldUpdate = true;
+    }
+    // Handle default for oldMachineCurrent if provided (e.g. 13A)
+    // Only set if undefined, do not overwrite 0 or other values
+    if (value.oldMachineCurrent === undefined) {
+      updates.oldMachineCurrent = 13;
       shouldUpdate = true;
     }
 
@@ -192,6 +206,13 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
 
   // Determine if any option is selected to show/hide "Other Parameters"
   const isAnyOptionSelected = choices.selectedOption !== undefined;
+
+  // Notify parent about selection state
+  useEffect(() => {
+    if (onSchemeSelect) {
+      onSchemeSelect(isAnyOptionSelected);
+    }
+  }, [isAnyOptionSelected]);
 
   return (
     <div className="bg-industrial-card border border-industrial-border p-6 rounded-sm shadow-lg text-industrial-text">
@@ -326,8 +347,7 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
                 className="mt-1 accent-industrial-accent"
               />
               <div>
-                <span className="font-bold block">保留原曳引机</span>
-                <span className="text-xs text-industrial-muted">全套控制系统 + 门机马达及控制器</span>
+                <span className="font-bold block">全套控制系统 + 门机马达及控制器</span>
               </div>
             </label>
 
@@ -432,8 +452,7 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
                 className="mt-1 accent-industrial-accent"
               />
               <div>
-                <span className="font-bold block">更换主机 (保留门机)</span>
-                <span className="text-xs text-industrial-muted">全套控制系统 + 门机马达及控制器 + 主机 + 机架</span>
+                <span className="font-bold block">全套控制系统 + 门机马达及控制器 + 主机 + 机架</span>
                 {!value.hasMachineRoom && <span className="block text-xs text-red-500 mt-1">无机房不可选</span>}
               </div>
             </label>
@@ -449,8 +468,7 @@ export const QuotationForm: React.FC<Props> = ({ value, onChange }) => {
                 className="mt-1 accent-industrial-accent"
               />
               <div>
-                <span className="font-bold block">更换主机 + 更换门机</span>
-                <span className="text-xs text-industrial-muted">全套控制系统 + 门机整组 + 主机 + 机架</span>
+                <span className="font-bold block">全套控制系统 + 门机整组 + 主机 + 机架</span>
                 {!value.hasMachineRoom && <span className="block text-xs text-red-500 mt-1">无机房不可选</span>}
               </div>
             </label>
